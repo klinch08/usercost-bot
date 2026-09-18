@@ -55,3 +55,23 @@ async def ton_usd():
             except Exception as e:
                 log.warning("курс %s: %s", url.split("/")[2], e)
     return _cache[1]
+
+
+_usd_rub_cache = (0.0, 0.0)
+
+
+async def usd_rub():
+    """Курс доллара ЦБ РФ - запасной путь к рублям, если CoinGecko молчит
+    (с серверов Render он отвечает ошибкой вместо курса)."""
+    global _usd_rub_cache
+    if time.time() - _usd_rub_cache[0] < 3600 and _usd_rub_cache[1]:
+        return _usd_rub_cache[1]
+    try:
+        async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=10)) as s:
+            async with s.get("https://www.cbr-xml-daily.ru/daily_json.js") as r:
+                rate = float((await r.json(content_type=None))["Valute"]["USD"]["Value"])
+        if rate > 0:
+            _usd_rub_cache = (time.time(), rate)
+    except Exception as e:
+        log.warning("курс ЦБ: %s", e)
+    return _usd_rub_cache[1]

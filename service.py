@@ -59,6 +59,8 @@ class Service:
 
         if not rate and page and page.ton_rate:
             rate = page.ton_rate          # курс со страницы Fragment как запасной
+        if not rub and rate:
+            rub = rate * (await rates.usd_rub())
         sales = sales or []
         own_price = 0.0
         if page:
@@ -99,4 +101,6 @@ async def number_report(svc, digits):
         svc.tg.phone(digits))
     if not rate and page and page.ton_rate:
         rate = page.ton_rate
+    if not rub and rate:
+        rub = rate * (await rates.usd_rub())
     return NumberReport(digits, page, rate or 0.0, rub or 0.0, tg)
