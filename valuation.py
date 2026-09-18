@@ -11,6 +11,7 @@
 """
 
 import math
+import re
 import statistics
 from dataclasses import dataclass, field
 
@@ -18,6 +19,9 @@ import config
 import features
 
 CLASSES_FALLBACK = ("pronounce", "random")
+# класс без своей медианы на такой длине берёт соседний, а не сразу случайный набор
+CLASS_PARENT = {"common_top": "common_mid", "common_mid": "common_low",
+                "common_low": "dict_word"}
 
 
 @dataclass
@@ -50,6 +54,13 @@ def name_class(f):
         return "digits_w" if f.word else "digits"
     if f.two_words:
         return "two_words"
+    if f.word_kind == "common_word":
+        # частое слово дороже редкого: news и money против caring и lottery
+        rank = features.word_rank(f.word)
+        for bound, tier in zip(config.WORD_RANK_TIERS, ("common_top", "common_mid")):
+            if rank is not None and rank < bound:
+                return tier
+        return "common_low"
     if f.word_kind:
         return f.word_kind
     return "random" if f.random_letters else "pronounce"
@@ -59,12 +70,70 @@ def class_price(f):
     """Медиана продаж класса; нет такой длины - ближайшая длина, потом случайные."""
     med = config.CALIBRATION["medians"]
     cls, L = name_class(f), length_bucket(f.length)
-    for c in (cls,) + CLASSES_FALLBACK:
+    chain = [cls]
+    while chain[-1] in CLASS_PARENT:
+        chain.append(CLASS_PARENT[chain[-1]])
+    for c in tuple(chain) + CLASSES_FALLBACK:
         for d in (0, 1, -1, 2, -2, 3):
             key = "%s:%d" % (c, L + d)
             if key in med:
                 return med[key]
     return config.CALIBRATION["creation_ton"]
+
+
+def _class_key(f, keys):
+    """Ключ класса вида cls:<класс>:<длина>, для которого есть множитель."""
+    cls, L = name_class(f), length_bucket(f.length)
+    chain = [cls]
+    while chain[-1] in CLASS_PARENT:
+        chain.append(CLASS_PARENT[chain[-1]])
+    for c in tuple(chain) + CLASSES_FALLBACK:
+        for d in (0, 1, -1, 2, -2, 3):
+            key = "cls:%s:%d" % (c, L + d)
+            if key in keys:
+                return key
+    return None
+
+
+def design(f, same, prefix, keys=None):
+    """Признаки ника для регрессии log(цены).
+
+    Имя признака совпадает с ключом множителя в calibration.json["coef"]:
+    цена = exp(сумма коэффициент * значение), то есть база класса и длины,
+    умноженная на поправки. calibrate.py подбирает коэффициенты по продажам.
+    same   - цены похожих продаж (тот же префикс, длина, типы символов);
+    prefix - цены всех продаж с тем же префиксом из трёх символов.
+    """
+    x = {"bias": 1.0}
+    key = ("cls:%s:%d" % (name_class(f), length_bucket(f.length)) if keys is None
+           else _class_key(f, keys))
+    if key:
+        x[key] = 1.0
+    rank = features.word_rank(f.word) if f.word_kind == "common_word" and not f.two_words else None
+    if rank is not None:
+        x["word_rarity"] = math.log1p(rank)          # чем реже слово, тем дешевле
+    if not f.word:
+        x["pronounce"] = f.pronounce
+        letters = [c for c in f.name if c.isalpha()]
+        if letters:
+            x["vowel_ratio"] = sum(c in features.VOWELS for c in letters) / len(letters)
+    if re.search(r"(.)", f.name) and not f.repeat_pretty:
+        x["double_letter"] = 1.0
+    if f.mirror and not f.repeat_pretty:
+        x["mirror"] = 1.0
+    if len(same) >= config.SIMILAR_MIN_COUNT:
+        x["similar_log"] = math.log(max(statistics.median(same), 1))
+    else:
+        x["no_similar"] = 1.0
+    if len(prefix) >= config.SIMILAR_MIN_COUNT:
+        x["prefix_log"] = math.log(max(statistics.median(prefix), 1))
+    return x
+
+
+def model_price(f, same, prefix):
+    coef = config.CALIBRATION["coef"]
+    x = design(f, same, prefix, keys=coef)
+    return math.exp(sum(coef.get(k, 0.0) * v for k, v in x.items()))
 
 
 def feature_modifier(f):
@@ -189,8 +258,12 @@ def evaluate(name, sales, creation_ton=None, on_fragment=False, own_price=0.0,
     creation = creation_ton or config.CALIBRATION["creation_ton"]
     same, rest = similar_sales(f, sales)
 
-    price = class_price(f) * feature_modifier(f)
-    price = blend_similar(price, f, same)
+    if "coef" in config.CALIBRATION:
+        prefix = [p for n, p in sales if n != f.name]
+        price = model_price(f, [p for _, p in same], prefix)
+    else:
+        price = class_price(f) * feature_modifier(f)
+        price = blend_similar(price, f, same)
     price = blend_own_price(price, own_price)
     price = max(price, creation)
     price = round(price) if price >= 20 else round(price, 1)

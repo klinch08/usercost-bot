@@ -39,6 +39,10 @@ CREATION_MIN_SAMPLES = 3
 with open(os.path.join(ROOT, "data", "calibration.json"), encoding="utf-8") as _f:
     CALIBRATION = json.load(_f)
 
+# Границы частотности английских слов (место в списке 10 000 частых слов):
+# до 1000 - common_top, до 3000 - common_mid, дальше - common_low
+WORD_RANK_TIERS = (1000, 3000)
+
 # Поправки поверх медианы класса
 PRONOUNCE_GOOD = 0.7        # произносимость выше - плюс
 PRONOUNCE_BAD = 0.4         # ниже - минус
@@ -48,7 +52,7 @@ MOD_MIRROR = 1.5
 
 # вес похожих продаж (тот же префикс, длина и типы символов) для ников без слова:
 # у слова продажи по префиксу про другие слова и ничего не говорят
-SIMILAR_WEIGHT = 0.5
+SIMILAR_WEIGHT = 0.7        # подобрано перебором на 27 тыс. продаж (evaluate_model.py)
 SIMILAR_MIN_COUNT = 3
 # вес собственной цены ника на Fragment (последняя продажа, ставка, цена продажи)
 OWN_PRICE_WEIGHT = 0.7

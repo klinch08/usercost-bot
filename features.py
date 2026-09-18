@@ -43,6 +43,17 @@ def _words(fname):
         return frozenset(w.strip().lower() for w in f if w.strip())
 
 
+@lru_cache(maxsize=None)
+def _common_rank():
+    """Место слова в частотном списке (0 - самое частое). Список уже отсортирован."""
+    with open(os.path.join(DATA, "words_common.txt"), encoding="utf-8") as f:
+        return {w.strip(): i for i, w in enumerate(f) if w.strip()}
+
+
+def word_rank(token):
+    return _common_rank().get(token)
+
+
 @dataclass
 class Features:
     name: str
