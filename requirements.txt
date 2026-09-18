@@ -1,0 +1,7 @@
+aiogram==3.31.0
+aiohttp>=3.13
+Telethon==1.44.0
+pillow>=12.0
+aiosqlite>=0.22
+asyncpg>=0.31
+pytest>=9

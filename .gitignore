@@ -1,0 +1,7 @@
+__pycache__/
+*.pyc
+*.db
+cards/
+.env
+token.txt
+bot.log
