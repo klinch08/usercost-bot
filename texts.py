@@ -64,7 +64,8 @@ def status_lines(rep):
     if p is not None and p.history and p.status != fragment.SOLD:
         last = p.history[0]
         lines.append("💸 Последняя продажа: %s (%s)" % (money(last.price, rate), _date(last.date)))
-    lines.append(scam_line(rep.tg))
+    if rep.tg is not None:             # без сессии Telegram строку не показываем
+        lines.append(scam_line(rep.tg))
 
     return lines
 
@@ -132,7 +133,8 @@ def number_text(rep):
         out += ["", "<b>💸 История продаж:</b>", "<blockquote>%s</blockquote>" % "\n".join(
             "• %s — %s" % (_date(h.date), money(h.price, rate)) for h in sales[:5])]
 
-    out += ["", "<b>🛡 Ограничения в Telegram</b>", restriction_line(rep.tg)]
+    if rep.tg is not None:
+        out += ["", "<b>🛡 Ограничения в Telegram</b>", restriction_line(rep.tg)]
     return "\n".join(out)
 
 
